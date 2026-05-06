@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>ソフトテニス分析アプリ</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family:sans-serif; background:#f5f5f5; padding:20px;}
+.container { max-width:900px; margin:auto; background:white; padding:20px; border-radius:10px;}
+input { width:70px; margin:3px;}
+.name { width:120px;}
+button, select { margin-top:10px; padding:10px; width:100%;}
+canvas { margin-top:20px;}
+.vs { text-align:center; font-size:28px; color:red; margin:20px 0;}
+</style>
+</head>
+
+<body>
+<div class="container">
+<h1>ソフトテニス分析アプリ</h1>
+
+<div id="players"></div>
+
+<button onclick="recordData()">記録する</button>
+
+<h3>個人履歴</h3>
+<select id="playerSelect"></select>
+<button onclick="showSelectedHistory()">表示</button>
+
+<h3>ペア履歴</h3>
+<select id="pairSelect"></select>
+<button onclick="showPairHistory()">表示</button>
+
+<button onclick="clearAll()">全データ削除</button>
+
+<div id="chartArea"></div>
+<div id="result"></div>
+</div>
+
+<script>
+const container = document.getElementById("players");
+
+// UI生成（初期値0）
+for(let i=0;i<4;i++){
+
+  if(i===2){
+    container.innerHTML += `<div class="vs">VS</div>`;
+  }
+
+  container.innerHTML += `
+  <h2>プレイヤー${i+1}</h2>
+  名前 <input id="name_${i}" class="name" value="P${i+1}"><br>
+
+  サーブ 成功 <input id="serve_in_${i}" value="0">
+  / 総数 <input id="serve_total_${i}" value="0"><br>
+
+  レシーブ 得点 <input id="receive_win_${i}" value="0">
+  / 総数 <input id="receive_total_${i}" value="0"><br>
+
+  結果
+  <select id="result_${i}">
+  <option value="勝ち">勝ち</option>
+  <option value="負け">負け</option>
+  </select><br>
+  `;
+}
+
+function val(id){ return Number(document.getElementById(id).value)||0; }
+
+function serveRate(i){ return val(`serve_in_${i}`)/(val(`serve_total_${i}`)||1); }
+function receiveRate(i){ return val(`receive_win_${i}`)/(val(`receive_total_${i}`)||1); }
+
+function getToday(){
+let d=new Date();
+return d.getFullYear()+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+("0"+d.getDate()).slice(-2);
+}
+
+// ★ 記録＋表示＋保存＋リセット
+function recordData(){
+
+let html="<h3>今回データ</h3>";
+
+// 表示
+for(let i=0;i<4;i++){
+let name=document.getElementById(`name_${i}`).value;
+let s=serveRate(i)*100;
+let r=receiveRate(i)*100;
+
+html+=`${name}：
+サーブ ${s.toFixed(1)}%
+/ レシーブ ${r.toFixed(1)}%<br>`;
+}
+
+document.getElementById("result").innerHTML=html;
+
+// 保存
+let db=JSON.parse(localStorage.getItem("softDB"))||{};
+let pairDB=JSON.parse(localStorage.getItem("pairDB"))||{};
+
+for(let i=0;i<4;i++){
+let name=document.getElementById(`name_${i}`).value;
+
+let data={
+date:getToday(),
+serveIn:val(`serve_in_${i}`),
+serveTotal:val(`serve_total_${i}`),
+receiveWin:val(`receive_win_${i}`),
+receiveTotal:val(`receive_total_${i}`),
+result:document.getElementById(`result_${i}`).value
+};
+
+if(!db[name]) db[name]=[];
+db[name].push(data);
+}
+
+// ペア
+let p1=name_0.value;
+let p2=name_1.value;
+let p3=name_2.value;
+let p4=name_3.value;
+
+let pairA=[p1,p2].sort().join(" & ");
+let pairB=[p3,p4].sort().join(" & ");
+
+let resultTeam1=document.getElementById("result_0").value;
+
+let pairDataA={date:getToday(), result:resultTeam1};
+let pairDataB={date:getToday(), result:resultTeam1==="勝ち"?"負け":"勝ち"};
+
+if(!pairDB[pairA]) pairDB[pairA]=[];
+if(!pairDB[pairB]) pairDB[pairB]=[];
+
+pairDB[pairA].push(pairDataA);
+pairDB[pairB].push(pairDataB);
+
+localStorage.setItem("softDB",JSON.stringify(db));
+localStorage.setItem("pairDB",JSON.stringify(pairDB));
+
+loadPlayers();
+loadPairs();
+
+// ★ 入力リセット（ここが追加）
+for(let i=0;i<4;i++){
+document.getElementById(`serve_in_${i}`).value=0;
+document.getElementById(`serve_total_${i}`).value=0;
+document.getElementById(`receive_win_${i}`).value=0;
+document.getElementById(`receive_total_${i}`).value=0;
+document.getElementById(`result_${i}`).value="勝ち";
+}
+
+alert("記録完了！");
+}
+
+// プレイヤー一覧
+function loadPlayers(){
+let db=JSON.parse(localStorage.getItem("softDB"))||{};
+let select=document.getElementById("playerSelect");
+select.innerHTML="";
+for(let name in db){
+select.innerHTML+=`<option value="${name}">${name}</option>`;
+}
+}
+
+// ペア一覧
+function loadPairs(){
+let pairDB=JSON.parse(localStorage.getItem("pairDB"))||{};
+let select=document.getElementById("pairSelect");
+select.innerHTML="";
+for(let name in pairDB){
+select.innerHTML+=`<option value="${name}">${name}</option>`;
+}
+}
+
+// 個人履歴
+function showSelectedHistory(){
+let db=JSON.parse(localStorage.getItem("softDB"))||{};
+let name=document.getElementById("playerSelect").value;
+
+if(!db[name]) return;
+
+let html=`<h3>${name} の履歴</h3>`;
+let dates=[], serveArr=[], receiveArr=[];
+let win=0,total=0;
+
+db[name].forEach((d,index)=>{
+let s=d.serveIn/d.serveTotal*100;
+let r=d.receiveWin/d.receiveTotal*100;
+
+dates.push(d.date);
+serveArr.push(s);
+receiveArr.push(r);
+
+if((d.result||"").trim()==="勝ち") win++;
+total++;
+
+html+=`${d.date}：
+サーブ ${s.toFixed(1)}%
+/ レシーブ ${r.toFixed(1)}%
+/ ${d.result}
+<button onclick="deleteData('${name}',${index})">削除</button><br>`;
+});
+
+let rate=total?(win/total*100).toFixed(1):0;
+html+=`<h3>勝率 ${rate}%（${win}/${total}）</h3>`;
+
+document.getElementById("result").innerHTML=html;
+
+document.getElementById("chartArea").innerHTML=`<canvas id="chart"></canvas>`;
+drawChart("chart",dates,serveArr,receiveArr,name);
+}
+
+// ペア履歴
+function showPairHistory(){
+let pairDB=JSON.parse(localStorage.getItem("pairDB"))||{};
+let name=document.getElementById("pairSelect").value;
+
+if(!pairDB[name]) return;
+
+let html=`<h3>${name} のペア成績</h3>`;
+let win=0,total=0;
+
+pairDB[name].forEach(d=>{
+if((d.result||"").trim()==="勝ち") win++;
+total++;
+html+=`${d.date}：${d.result}<br>`;
+});
+
+let rate=total?(win/total*100).toFixed(1):0;
+html+=`<h3>ペア勝率 ${rate}%（${win}/${total}）</h3>`;
+
+document.getElementById("result").innerHTML=html;
+document.getElementById("chartArea").innerHTML="";
+}
+
+// グラフ
+function drawChart(id,labels,serve,receive,name){
+new Chart(document.getElementById(id),{
+type:"line",
+data:{
+labels:labels,
+datasets:[
+{label:name+" サーブ",data:serve},
+{label:name+" レシーブ",data:receive}
+]
+}
+});
+}
+
+// 削除
+function deleteData(name,index){
+let db=JSON.parse(localStorage.getItem("softDB"))||{};
+db[name].splice(index,1);
+if(db[name].length===0) delete db[name];
+
+localStorage.setItem("softDB",JSON.stringify(db));
+loadPlayers();
+showSelectedHistory();
+}
+
+// 全削除
+function clearAll(){
+if(!confirm("全部消す？")) return;
+localStorage.removeItem("softDB");
+localStorage.removeItem("pairDB");
+loadPlayers();
+loadPairs();
+document.getElementById("result").innerHTML="";
+document.getElementById("chartArea").innerHTML="";
+}
+
+// 初期化
+window.onload=function(){
+loadPlayers();
+loadPairs();
+};
+</script>
+</body>
+</html>
